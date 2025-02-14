@@ -3,8 +3,8 @@
 */
 
 type Listener<T>    = (state: T) => void;
-type Middleware<T>  = (state: T, next: (newState: T) => void) => void;
-type Selector<T, U> = (state: T) => U;
+type Middleware<T> = (state: T, next: (newState: T) => void, error?: (err: Error) => void) => void;
+type Selector<T, U> = (state: T) => U ;
 
 class Store<T> {
     private state: T;
@@ -26,18 +26,24 @@ class Store<T> {
      * Update the state immutably and notify subscribers.
      * Supports both direct object updates and updater functions.
      */
+
     setState(updater: Partial<T> | ((state: T) => Partial<T>)): void {
         const newState = typeof updater === "function" ? updater(this.state) : updater;
         const next = (finalState: T) => {
             this.state = { ...this.state, ...finalState };
             this.notify();
         };
-
+    
         if (this.middlewares.length > 0) {
             let index = 0;
             const runMiddleware = (state: T) => {
                 if (index < this.middlewares.length) {
-                    this.middlewares[index++](state, runMiddleware);
+                    this.middlewares[index++](state, runMiddleware, (err?: Error) => {
+                        if (err) {
+                            // default error handing behavior
+                            console.error("Middleware error:", err);
+                        }
+                    });
                 } else {
                     next(state);
                 }
@@ -47,7 +53,7 @@ class Store<T> {
             next({ ...this.state, ...newState });
         }
     }
-
+    
     /**
      * Asynchronously updates the state and notifies subscribers.
      */
@@ -72,7 +78,7 @@ class Store<T> {
         let previousValue = selector(this.state);
         const wrappedListener = () => {
             const newValue = selector(this.state);
-            if (newValue !== previousValue) {
+            if (!Object.is(newValue,previousValue)) {
                 previousValue = newValue;
                 listener(newValue);
             }
